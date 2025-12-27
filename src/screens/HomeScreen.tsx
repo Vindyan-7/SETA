@@ -18,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { auth } from '../lib/firebase';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext'; // Ensure this path is correct
+import { useFilter } from '../context/FilterContext'; // Import Filter Context
 
 const CATEGORIES = [
   { id: 'food', name: 'Food', icon: 'fast-food', color: '#FF6B6B' },
@@ -37,6 +38,7 @@ const TIME_FILTERS = [
 
 export default function HomeScreen() {
   const { colors, isDark } = useTheme(); // Theme Hook
+  const { selectedFilter, setSelectedFilter } = useFilter(); // Filter Hook
   
   const [modalVisible, setModalVisible] = useState(false);
   const [amount, setAmount] = useState('');
@@ -49,7 +51,6 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
-  const [selectedFilter, setSelectedFilter] = useState('30'); 
   const [showFilterModal, setShowFilterModal] = useState(false);
 
   // --- FETCH DATA ---
@@ -87,10 +88,22 @@ export default function HomeScreen() {
     let filtered = data;
 
     if (filterValue !== 'all') {
-      const days = parseInt(filterValue);
-      const cutoffDate = new Date();
-      cutoffDate.setDate(now.getDate() - days);
-      cutoffDate.setHours(0,0,0,0);
+    const cutoffDate = new Date();
+    // FIX: If 'Today' (1 day), we want start of THIS day, not yesterday.
+    if (filterValue === '1') {
+        cutoffDate.setHours(0, 0, 0, 0); 
+    } else {
+        const days = parseInt(filterValue);
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        cutoffDate.setHours(0, 0, 0, 0);
+    }
+    
+    filtered = data.filter(item => {
+        const itemDate = new Date(item.created_at);
+        return itemDate >= cutoffDate;
+    });
+    // ...
+
 
       filtered = data.filter(item => {
         const itemDate = new Date(item.created_at);
@@ -101,11 +114,10 @@ export default function HomeScreen() {
     setFilteredExpenses(filtered);
     const total = filtered.reduce((sum, item) => sum + Number(item.amount), 0);
     setTotalSpending(total);
-    setSelectedFilter(filterValue);
     setShowFilterModal(false);
   };
 
-  useFocusEffect(useCallback(() => { fetchExpenses(); }, []));
+  useFocusEffect(useCallback(() => { fetchExpenses(); }, [selectedFilter]));
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -129,6 +141,7 @@ export default function HomeScreen() {
         user_id: user.uid,
       };
 
+      
       const { error } = await supabase.from('expenses').insert([newExpense]);
       if (error) throw error;
 
@@ -250,7 +263,10 @@ export default function HomeScreen() {
               <TouchableOpacity
                 key={filter.value}
                 style={[styles.filterOption, { borderBottomColor: colors.border }, selectedFilter === filter.value && { backgroundColor: colors.tint }]}
-                onPress={() => applyFilter(allExpenses, filter.value)}
+                onPress={() => {
+                  setSelectedFilter(filter.value);
+                  setShowFilterModal(false);
+                }}
               >
                 <Text style={[styles.filterOptionText, { color: colors.text }, selectedFilter === filter.value && { color: colors.primary, fontWeight: 'bold' }]}>
                   {filter.label}
