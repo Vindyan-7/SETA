@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,10 +36,19 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="wallet" size={60} color="#6366F1" />
-        <Text style={styles.title}>SETA</Text>
+        <Image 
+          source={require('../assets/logo.png')} /* 1. Update this path to where your image is */
+          style={{ 
+            width: 120,    /* 2. Adjust width */
+            height: 120,   /* 3. Adjust height */
+            marginBottom: 20,
+            resizeMode: 'contain' 
+          }} 
+        />
+
         <Text style={styles.subtitle}>Student Expense Tracker App</Text>
       </View>
+
 
       <View style={styles.form}>
         <Text style={styles.label}>Email</Text>
