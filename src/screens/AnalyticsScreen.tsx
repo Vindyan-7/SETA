@@ -1,12 +1,21 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity, Modal } from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
 import { supabase } from '../lib/supabase';
 import { auth } from '../lib/firebase';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext'; // Import Theme Hook
+import { useFilter } from '../context/FilterContext'; // Import Filter Context
 import { getGeminiInsight } from '../lib/gemini'; // Import AI
+
+
+const TIME_FILTERS = [
+  { label: 'Today', value: '1' },
+  { label: 'Last 7 Days', value: '7' },
+  { label: 'Last 30 Days', value: '30' },
+  { label: 'All Time', value: 'all' },
+];
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -21,6 +30,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function AnalyticsScreen() {
   const { colors, isDark } = useTheme(); // Theme Hook
+  const { selectedFilter, setSelectedFilter } = useFilter(); // Filter Hook
   
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<any[]>([]);
@@ -28,6 +38,7 @@ export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [aiInsight, setAiInsight] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   const fetchData = async () => {
     const user = auth.currentUser;
@@ -37,11 +48,28 @@ export default function AnalyticsScreen() {
     }
 
     try {
-      // 1. Fetch Data
-      const { data, error } = await supabase
+      // 1. Fetch Data with date filtering
+      let query = supabase
         .from('expenses')
-        .select('category, amount')
-        .eq('user_id', user.uid); // FILTER
+        .select('category, amount, created_at')
+        .eq('user_id', user.uid);
+
+      // Apply date filter
+      // Apply date filter
+if (selectedFilter !== 'all') {
+    const cutoffDate = new Date();
+    // FIX: Match the logic from Home Screen so 'Today' shows only today's data
+    if (selectedFilter === '1') {
+        cutoffDate.setHours(0, 0, 0, 0);
+    } else {
+        const days = parseInt(selectedFilter);
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        cutoffDate.setHours(0, 0, 0, 0);
+    }
+    query = query.gte('created_at', cutoffDate.toISOString());
+}
+
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) throw error;
 
@@ -88,7 +116,7 @@ export default function AnalyticsScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchData();
-    }, [isDark]) // Re-run if theme changes to update legend colors
+    }, [selectedFilter, isDark]) // Re-run if filter or theme changes
   );
 
   const onRefresh = () => {
@@ -102,6 +130,15 @@ export default function AnalyticsScreen() {
       {/* HEADER */}
       <View style={[styles.header, { backgroundColor: colors.card }]}>
         <Text style={[styles.headerTitle, { color: colors.primary }]}>Analytics</Text>
+        <TouchableOpacity 
+          style={styles.filterButton} 
+          onPress={() => setShowFilterModal(true)}
+        >
+          <Text style={styles.filterButtonText}>
+            {TIME_FILTERS.find(f => f.value === selectedFilter)?.label || 'All Time'}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -169,15 +206,48 @@ export default function AnalyticsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* FILTER MODAL */}
+      <Modal animationType="fade" transparent={true} visible={showFilterModal} onRequestClose={() => setShowFilterModal(false)}>
+        <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={() => setShowFilterModal(false)}>
+          <View style={[styles.filterMenu, { backgroundColor: colors.card }]}>
+            <Text style={[styles.filterTitle, { color: colors.text }]}>Select Time Period</Text>
+            {TIME_FILTERS.map((filter) => (
+              <TouchableOpacity
+                key={filter.value}
+                style={[styles.filterOption, { borderBottomColor: colors.border }, selectedFilter === filter.value && { backgroundColor: colors.tint }]}
+                onPress={() => {
+                  setSelectedFilter(filter.value);
+                  setShowFilterModal(false);
+                }}
+              >
+                <Text style={[styles.filterOptionText, { color: colors.text }, selectedFilter === filter.value && { color: colors.primary, fontWeight: 'bold' }]}>
+                  {filter.label}
+                </Text>
+                {selectedFilter === filter.value && <Ionicons name="checkmark" size={20} color={colors.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 16 },
   headerTitle: { fontSize: 28, fontWeight: '700' },
   scrollContent: { paddingBottom: 40 },
+  
+  filterButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(99, 102, 241, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  filterButtonText: { color: '#6366F1', marginRight: 4, fontWeight: '600', fontSize: 12 },
+  
+  filterOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  filterMenu: { width: '80%', borderRadius: 16, padding: 16, elevation: 5 },
+  filterTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' },
+  filterOption: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1 },
+  filterOptionText: { fontSize: 16 },
   
   aiCard: { margin: 16, marginBottom: 0, padding: 16, borderRadius: 16, borderWidth: 1 },
   aiTitle: { fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
